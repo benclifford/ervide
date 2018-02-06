@@ -5,9 +5,18 @@ startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
 
 start() -> startup_message(),
 
+	   % At present, there's a defined process startup order because
+	   % none of these processes can cope with a target process
+	   % not existing when it begins and sends its initial value.
+	   % That could be fixed...
 	   PWM_process = spawn(ervide, pwmmer, []),
 	   io:fwrite("start: PWM_process = ~w (pid)\n", [PWM_process]),
 	   register(pwm, PWM_process),
+
+	   Summer_process = spawn(ervide, sumctrl, []),
+	   io:fwrite("start: Summer_process = ~w (pid)\n", [Summer_process]),
+	   register(summer, Summer_process),
+
 
 	   Proportional_process = spawn(ervide, propctrl, []),
 	   io:fwrite("start: Proportional_process = ~w (pid)\n", [Proportional_process]),
@@ -17,10 +26,6 @@ start() -> startup_message(),
 	   io:fwrite("start: Integral_process = ~w (pid)\n", [Integral_process]),
 	   register(integral, Integral_process),
 
-	   Summer_process = spawn(ervide, sumctrl, []),
-	   io:fwrite("start: Summer_process = ~w (pid)\n", [Summer_process]),
-	   register(summer, Summer_process),
-
 	   % as an example of changing the PWM fraction
            timer:sleep(10000),
 	   pwm ! 0.6,   % try a bigger duty cycle
@@ -29,19 +34,39 @@ start() -> startup_message(),
 
 
 propctrl() -> io:fwrite("proportional: loop... nothing to do but message the summer with 0%\n"),
+	      summer ! {proportional, 0},
 	      timer:sleep(18876),
 	      propctrl().
 
 integctrl() -> io:fwrite("integral: loop... nothing to do but message the summer with 1%\n"),
+	       summer ! {integral, 0.01},
 	       timer:sleep(17543),
 	       integctrl().
 
 % summer should receive partial-PWMs from the other components:
 % proportional, integral and derivative, sum them to produce
-% a final PWM and pass it on the the PWMer to make happen.
-sumctrl() -> io:fwrite("summer: loop... nothing to do\n"),
-	     timer:sleep(25090),
-	     sumctrl().
+% a final PWM and pass it on to the pwmmer to make happen.
+%
+% We should periodically update the pwmmer in case it has forgotten (?).
+%
+% It will receive a name atom rather than a PID, I guess, because the
+% PIDs might change as services are restarted. For supercrazy
+% live upgradability, it should perhaps forgot a name after a while
+% (10 minutes?) if we haven't had an update? Soft-state sum components!
+sumctrl() -> io:fwrite("summer: startup\n"),
+	     sumloop(1).
+
+sumloop(Last) -> io:fwrite("summer: waiting\n"),
+             New = receive 
+		     {Pr, V} -> 
+			     io:fwrite("summer: received Pr ~w  V ~w\n", [Pr, V]), V;
+		     Token -> io:fwrite("summer: Unknown message ~w\n", [Token]), Last
+             after 25090 -> Last
+	     end,
+	     io:fwrite("summer: last pwm = ~w%\n", [Last * 100]),
+	     io:fwrite("summer: new pwm = ~w%\n", [New * 100]),
+	     pwm ! New,
+	     sumloop(New).
 
 
 % pwmmer is supplied with a single PWM fraction value stream, and
