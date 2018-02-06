@@ -33,8 +33,8 @@ start() -> startup_message(),
 	   io:fwrite("start: End of start\n").
 
 
-propctrl() -> io:fwrite("proportional: loop... nothing to do but message the summer with 0%\n"),
-	      summer ! {proportional, 0},
+propctrl() -> io:fwrite("proportional: loop... nothing to do but message the summer with 5%\n"),
+	      summer ! {proportional, 0.05},
 	      timer:sleep(18876),
 	      propctrl().
 
@@ -54,20 +54,26 @@ integctrl() -> io:fwrite("integral: loop... nothing to do but message the summer
 % live upgradability, it should perhaps forgot a name after a while
 % (10 minutes?) if we haven't had an update? Soft-state sum components!
 sumctrl() -> io:fwrite("summer: startup\n"),
-	     sumloop(1).
+	     sumloop(maps:new()).
 
-sumloop(Last) -> io:fwrite("summer: waiting\n"),
+sumloop(Last) ->
+	     io:fwrite("summer: waiting, with Last = ~w\n", [Last]),
              New = receive 
-		     {Pr, V} -> 
-			     io:fwrite("summer: received Pr ~w  V ~w\n", [Pr, V]), V;
-		     Token -> io:fwrite("summer: Unknown message ~w\n", [Token]), Last
+		     {From, Val} -> 
+		        io:fwrite("summer: received new PWM component from From ~w for ~w%\n", [From, Val*100]),
+		       	maps:put(From, Val, Last);
+
+		     Token ->
+			io:fwrite("summer: Unknown message ~w\n", [Token]),
+			Last
              after 25090 -> Last
 	     end,
-	     io:fwrite("summer: last pwm = ~w%\n", [Last * 100]),
-	     io:fwrite("summer: new pwm = ~w%\n", [New * 100]),
-	     pwm ! New,
+	     Sumloopfold = fun(K, V, AccIn) -> AccIn + V end,
+	     New_pwm = maps:fold(Sumloopfold, 0, New),
+	     io:fwrite("summer: new pwm = ~w%\n", [New_pwm * 100]),
+	     io:fwrite("summer: new map is ~w\n", [New]),
+	     pwm ! New_pwm,
 	     sumloop(New).
-
 
 % pwmmer is supplied with a single PWM fraction value stream, and
 % makes the output PWM at that fraction. It doesn't care for the maths
