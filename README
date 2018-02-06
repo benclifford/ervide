@@ -1,0 +1,15 @@
+
+Compile:
+
+$ erlc ervide.erl 
+
+Run:
+
+$ erl -run ervide
+
+Stop:
+
+init:stop().
+
+in the shell
+
