@@ -1,5 +1,8 @@
 -module(ervide).
--export([start/0, pwmmer/0, propctrl/0, integctrl/0, sumctrl/0]).
+-export([start/0,
+	 pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
+	 tempmeasure/0
+	]).
 
 startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
 
@@ -26,14 +29,20 @@ start() -> startup_message(),
 	   io:fwrite("start: Integral_process = ~w (pid)\n", [Integral_process]),
 	   register(integral, Integral_process),
 
-	   % as an example of changing the PWM fraction
-           timer:sleep(10000),
-	   pwm ! 0.6,   % try a bigger duty cycle
+	   Temperature_process = spawn(ervide, tempmeasure, []),
+	   io:fwrite("start: Temperature_process = ~w (pid)\n", [Temperature_process]),
+	   register(temperature, Temperature_process),
 
-	   io:fwrite("start: End of start\n").
+	   io:fwrite("start: reached end of startup\n").
 
 
-propctrl() -> io:fwrite("proportional: loop... nothing to do but message the summer with 5%\n"),
+% proportional needs to know:
+%   Kp - hard coded constant for now
+%   Setpoint - hard coded constant for now?
+%   Current Temperature - needs to be acquired from sensor
+propctrl() -> io:fwrite("proportional: loop start\n"),
+	      Kp = 0.725, % PWMs per degree Celcius
+
 	      summer ! {proportional, 0.05},
 	      timer:sleep(18876),
 	      propctrl().
@@ -109,6 +118,23 @@ pwmmer_loop(Fraction) ->
 	receive
 		New_time -> pwmmer_loop(New_time)
 		% loop without waiting for the whole delay. This means we might switch immediately. Although there's perhaps some rate limiting to be done on how fast we switch the physical hardware. This might not be the place to do it? Looping without delay also means we'll absorb new messages fairly fast, rather than at a max rate of one per period.
+	        % timeout for PWM loop could be dynamically calculated as time to expected next transition (because if we don't get a message interrupting this, we'll only change at the next transition).
 	after PWM_pulse_resolution_ms -> pwmmer_loop(Fraction)
 	end.
+
+
+tempmeasure() ->
+  io:fwrite("temperature: start of loop\n"),
+  % connect TCP to remote port.
+  % get value
+  % decode JSON
+  % send out current temperature to whoever needs it:
+  % that is: an error calculator, which then forwards the error to
+  % proportional and integral components
+  % and 
+  % the derivative process, which should compute using the
+  % derivative of the measured value, not of the error term
+  % (so as to cope better with controller step changes)
+  timer:sleep(5014),
+  tempmeasure().
 
