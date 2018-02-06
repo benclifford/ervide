@@ -1,7 +1,7 @@
 -module(ervide).
 -export([start/0,
 	 pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
-	 tempmeasure/0
+	 tempmeasure/0, errorctrl/0
 	]).
 
 startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
@@ -29,11 +29,33 @@ start() -> startup_message(),
 	   io:fwrite("start: Integral_process = ~w (pid)\n", [Integral_process]),
 	   register(integral, Integral_process),
 
+	   Errorterm_process = spawn(ervide, errorctrl, []),
+	   io:fwrite("start: Errorterm_process = ~w (pid)\n", [Errorterm_process]),
+	   register(errorterm, Errorterm_process),
+
 	   Temperature_process = spawn(ervide, tempmeasure, []),
 	   io:fwrite("start: Temperature_process = ~w (pid)\n", [Temperature_process]),
 	   register(temperature, Temperature_process),
 
 	   io:fwrite("start: reached end of startup\n").
+
+
+errorctrl() ->
+  io:fwrite("errorterm: loop start\n"),
+  errorloop(72).
+
+errorloop(Setpoint) ->
+  io:fwrite("errorloop: with setpoint ~w degrees C\n", [Setpoint]),
+  receive
+    T -> io:fwrite("errorloop: received temperature ~w\n", [T]),
+         E = Setpoint - T, % degrees C, how many more degrees we need to add in heat to get to the setpoint
+	 io:fwrite("errorloop: temperature error is ~w degrees C\n", [E]),
+         proportional ! T,
+         integral ! T,
+         errorloop(Setpoint)
+  after 61434 -> errorloop(Setpoint) % wait a whole minute because this is not something that needs refreshing that often other than when a temperature arrives
+  end.
+
 
 
 % proportional needs to know:
@@ -43,8 +65,12 @@ start() -> startup_message(),
 propctrl() -> io:fwrite("proportional: loop start\n"),
 	      Kp = 0.725, % PWMs per degree Celcius
 
-	      summer ! {proportional, 0.05},
-	      timer:sleep(18876),
+              receive
+                T -> Fraction = Kp * T,
+                     io:fwrite("proportional: calculated new PWM fraction ~w%\n", [Fraction * 100]),
+
+	             summer ! {proportional, Fraction}
+              end, % no timeout persistent behaviour here - relying on summer to be able to store the relevant state
 	      propctrl().
 
 integctrl() -> io:fwrite("integral: loop... nothing to do but message the summer with 1%\n"),
@@ -125,9 +151,28 @@ pwmmer_loop(Fraction) ->
 
 tempmeasure() ->
   io:fwrite("temperature: start of loop\n"),
-  % connect TCP to remote port.
-  % get value
-  % decode JSON
+  io:fwrite("temperature: attempting to connect\n"),
+
+  {ok, Sock} = gen_tcp:connect("10.11.13.239", 23, [{active, false}, list], 2000),
+
+  io:fwrite("temperature: socket open - waiting for data\n"),
+
+  {ok, Json} = gen_tcp:recv(Sock, 0, 8000), % longer timeout because the remote goes off and does a temperature measurement
+
+  io:fwrite("temperature: received from socket: ~w\n", [Json]),
+
+  gen_tcp:close(Sock),
+
+  io:fwrite("temperature: socket closed\n"),
+
+  J = jiffy:decode(Json),
+
+
+  io:fwrite("temperature: J-decoded: ~w\n", [J]),
+  
+  [_,T] = J, % the 2nd sensor
+  io:fwrite("temperature: T-decoded: ~w\n", [T]),
+
   % send out current temperature to whoever needs it:
   % that is: an error calculator, which then forwards the error to
   % proportional and integral components
@@ -135,6 +180,9 @@ tempmeasure() ->
   % the derivative process, which should compute using the
   % derivative of the measured value, not of the error term
   % (so as to cope better with controller step changes)
-  timer:sleep(5014),
+
+  errorterm ! T,
+
+  timer:sleep(28014),
   tempmeasure().
 
