@@ -1,11 +1,9 @@
 -module(ervide).
--export([hello_world/0,start/0, pwmmer/0]).
+-export([start/0, pwmmer/0]).
 
-hello_world() -> io:fwrite("hello, world - from ervide\n").
+startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
 
-start() -> hello_world(),
-	   hello_world(),
-	   hello_world(),
+start() -> startup_message(),
 	   spawn(ervide, pwmmer, []),
 
 	   io:fwrite("End of start\n").
