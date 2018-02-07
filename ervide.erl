@@ -1,7 +1,7 @@
 -module(ervide).
 -export([start/0,
 	 pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
-	 tempmeasure/0, errorctrl/0
+	 tempmeasure/0, errorctrl/0, heatctrl/0
 	]).
 
 startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
@@ -12,6 +12,11 @@ start() -> startup_message(),
 	   % none of these processes can cope with a target process
 	   % not existing when it begins and sends its initial value.
 	   % That could be fixed...
+
+           Heater_process = spawn(ervide, heatctrl, []),
+	   io:fwrite("start: Heater_process = ~w (pid)\n", [Heater_process]),
+	   register(heater, Heater_process),
+
 	   PWM_process = spawn(ervide, pwmmer, []),
 	   io:fwrite("start: PWM_process = ~w (pid)\n", [PWM_process]),
 	   register(pwm, PWM_process),
@@ -135,8 +140,12 @@ pwmmer_loop(Fraction) ->
 	io:fwrite("pwmmer: Percent through period: ~w% \n", [Fraction_in_period * 100]),
 
 	if
-		Fraction > Fraction_in_period -> io:fwrite("pwmmer: power ON\n");
-		true -> io:fwrite("pwmmer: power OFF\n")
+		Fraction > Fraction_in_period ->
+                  io:fwrite("pwmmer: power ON\n"),
+                  heater ! 1;
+                                          
+		true -> io:fwrite("pwmmer: power OFF\n"),
+                        heater ! 0
 	end,
 
         io:fwrite("pwmmer: loop waiting for message or pwm interval\n"),
@@ -185,4 +194,17 @@ tempmeasure() ->
 
   timer:sleep(28014),
   tempmeasure().
+
+heatctrl() -> heaterloop(0).
+
+heaterloop(Last) ->
+  io:fwrite("heater: waiting for a message. last known state was ~w (on/off)\n", [Last]),
+
+  receive 
+    Bit -> io:fwrite("heater: fake control power ~w on/off\n", [Bit]),
+           heaterloop(Bit)
+  after 60000 ->
+    io:fwrite("heater: fake control power refreshing present state of ~w (on/off)\n", [Last]),
+    heaterloop(Last)
+  end.
 
