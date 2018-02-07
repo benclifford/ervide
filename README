@@ -1,4 +1,11 @@
 
+Deps:
+
+git clone https://github.com/paoloo/gpio
+
+erlc gpio/src/gpio.erl 
+# leaves the BEAM file in the top level directory where we want it
+
 Compile:
 
 $ erlc ervide.erl 
