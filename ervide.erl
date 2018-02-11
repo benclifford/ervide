@@ -13,7 +13,7 @@ start() -> startup_message(),
 	   % not existing when it begins and sends its initial value.
 	   % That could be fixed...
 
-           Heater_process = spawn(heater, heatctrl, []),
+           {ok, Heater_process} = gen_server:start_link(heater, [], []),
 	   io:fwrite("start: Heater_process = ~w (pid)\n", [Heater_process]),
 	   register(heater, Heater_process),
 
@@ -142,10 +142,10 @@ pwmmer_loop(Fraction) ->
 	if
 		Fraction > Fraction_in_period ->
                   io:fwrite("pwmmer: power ON\n"),
-                  heater ! 1;
+                  gen_server:cast(heater, 1);
                                           
 		true -> io:fwrite("pwmmer: power OFF\n"),
-                        heater ! 0
+                        gen_server:cast(heater, 0)
 	end,
 
         io:fwrite("pwmmer: loop waiting for message or pwm interval\n"),
