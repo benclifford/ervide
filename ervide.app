@@ -1,0 +1,7 @@
+{application, ervide,
+  [
+    {mod, {ervide, []}}
+
+  ]
+}.
+

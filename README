@@ -12,7 +12,7 @@ $ erlc ervide.erl
 
 Run:
 
-$ erl -run ervide
+$ erl -eval 'application:start(ervide).'
 
 Stop:
 

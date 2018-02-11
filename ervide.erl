@@ -1,48 +1,89 @@
 -module(ervide).
--export([start/0,
-	 pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
-	 tempmeasure/0, errorctrl/0
+
+-behaviour(application).
+-behaviour(supervisor).
+-export([pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
+	 tempmeasure/0, errorctrl/0, init/1,
+         start/2, stop/1, prep_stop/1,
+         startpwmmer/0, startsummer/0, startproportional/0,
+         startintegral/0, starterrorterm/0, starttemperature/0
 	]).
 
 startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
 
-start() -> startup_message(),
 
-	   % At present, there's a defined process startup order because
-	   % none of these processes can cope with a target process
-	   % not existing when it begins and sends its initial value.
-	   % That could be fixed...
+% for application behaviour
 
-           {ok, Heater_process} = gen_server:start_link(heater, [], []),
-	   io:fwrite("start: Heater_process = ~w (pid)\n", [Heater_process]),
-	   register(heater, Heater_process),
+start(Type, Args) -> 
+  startup_message(),
+  supervisor:start_link(ervide, []).
 
+prep_stop(State) -> 
+  io:fwrite("ervide: prep_stop: preparing to stop application\n"),
+  ok.
+
+stop(State) ->
+  io:fwrite("ervide: stop: end of stop application\n"),
+  ok.
+
+% for supervisor behaviour
+
+% At present, there's a defined process startup order because
+% none of these processes can cope with a target process
+% not existing when it begins and sends its initial value.
+% That could be fixed...
+
+init(Args) ->
+  io:fwrite("ervide: init: in init...\n", []),
+  SupFlags = #{strategy => one_for_one},
+  ChildSpec = [
+      #{id => heaterprocess, start => {heater, start, []} },
+      #{id => pwmmerprocess, start => {ervide, startpwmmer, []} },
+      #{id => summerprocess, start => {ervide, startsummer, []} },
+      #{id => proportionalprocess, start => {ervide, startproportional, []} },
+      #{id => integralprocess, start => {ervide, startintegral, []} },
+      #{id => errortermprocess, start => {ervide, starterrorterm, []} },
+      #{id => temperatureprocess, start => {ervide, starttemperature, []} }
+    ],
+  {ok, {SupFlags, ChildSpec}}.
+
+startpwmmer() -> 
 	   PWM_process = spawn(ervide, pwmmer, []),
 	   io:fwrite("start: PWM_process = ~w (pid)\n", [PWM_process]),
 	   register(pwm, PWM_process),
+           {ok, PWM_process}.
 
+startsummer() ->
 	   Summer_process = spawn(ervide, sumctrl, []),
 	   io:fwrite("start: Summer_process = ~w (pid)\n", [Summer_process]),
 	   register(summer, Summer_process),
+           {ok, Summer_process}.
 
 
+startproportional() ->
 	   Proportional_process = spawn(ervide, propctrl, []),
 	   io:fwrite("start: Proportional_process = ~w (pid)\n", [Proportional_process]),
 	   register(proportional, Proportional_process),
+           {ok, Proportional_process}.
 
+startintegral() ->
 	   Integral_process = spawn(ervide, integctrl, []),
 	   io:fwrite("start: Integral_process = ~w (pid)\n", [Integral_process]),
 	   register(integral, Integral_process),
+           {ok, Integral_process}.
 
+starterrorterm() ->
 	   Errorterm_process = spawn(ervide, errorctrl, []),
 	   io:fwrite("start: Errorterm_process = ~w (pid)\n", [Errorterm_process]),
 	   register(errorterm, Errorterm_process),
+           {ok, Errorterm_process}.
 
+starttemperature() ->
 	   Temperature_process = spawn(ervide, tempmeasure, []),
 	   io:fwrite("start: Temperature_process = ~w (pid)\n", [Temperature_process]),
 	   register(temperature, Temperature_process),
+           {ok, Temperature_process}.
 
-	   io:fwrite("start: reached end of startup\n").
 
 
 errorctrl() ->

@@ -1,13 +1,25 @@
 -module(heater).
 -behaviour(gen_server).
--export([init/1, handle_cast/2, handle_info/2, terminate/2]).
+-export([init/1, handle_cast/2, handle_info/2, terminate/2, start/0]).
 
 % How often the heater state will be retransmitted to the
 % heater control socket in the absence of any explicit
 % changes.
 -define(INTERVAL, 5634). % about 5 seconds
 
+
+start() ->
+           {ok, Heater_process} = gen_server:start_link(heater, [], []),
+           io:fwrite("heater: start: Heater_process = ~w (pid)\n", [Heater_process]),
+           {ok, Heater_process}.
+
+
 init([]) -> 
+  io:fwrite("heater: init: trapping exits\n"),
+
+  process_flag(trap_exit, true),
+
+
   io:fwrite("heater: initialising GPIO pins\n"),
 
   % PinNN numbers are board pins, but numbers
@@ -33,6 +45,8 @@ init([]) ->
   gpio:write(Pin16, 0),
   gpio:write(Pin13, 0),
 
+  io:fwrite("heater: init: registering heater name\n"),
+  register(heater, self()),
   io:fwrite("heater: init finished\n"),
   {ok, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, 0], ?INTERVAL}.
 
