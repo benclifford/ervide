@@ -163,7 +163,7 @@ sumloop(Last) ->
 	     io:fwrite("summer: waiting, with Last = ~w\n", [Last]),
              New = receive 
 		     {From, Val} -> 
-		        io:fwrite("summer: received new PWM component from From ~w for ~w%\n", [From, Val*100]),
+		        io:fwrite("summer: received new PWM component from ~w for ~w%\n", [From, Val*100]),
 		       	maps:put(From, Val, Last);
 
 		     Token ->
@@ -171,10 +171,10 @@ sumloop(Last) ->
 			Last
              after 25090 -> Last
 	     end,
+	     io:fwrite("summer: new component map is ~w\n", [New]),
 	     Sumloopfold = fun(K, V, AccIn) -> AccIn + V end,
 	     New_pwm = maps:fold(Sumloopfold, 0, New),
-	     io:fwrite("summer: new pwm = ~w%\n", [New_pwm * 100]),
-	     io:fwrite("summer: new map is ~w\n", [New]),
+	     io:fwrite("summer: new total PWM ~w%\n", [New_pwm * 100]),
 	     pwm ! New_pwm,
 	     sumloop(New).
 
