@@ -119,10 +119,32 @@ propctrl() -> io:fwrite("proportional: loop start\n"),
               end, % no timeout persistent behaviour here - relying on summer to be able to store the relevant state
 	      propctrl().
 
-integctrl() -> io:fwrite("integral: loop... nothing to do but message the summer with 1%\n"),
-	       summer ! {integral, 0.01},
-	       timer:sleep(17543),
-	       integctrl().
+integctrl() ->
+  io:fwrite("integral: starting\n"),
+  integloop(0, os:system_time(second)).
+
+integloop(Sum, Prev_time) ->
+               % the integral sum is a sum of temperature over time
+               % so the unit of Sum is (kelvin . sec)
+               % so Ki is PWMs per (kelvin . sec)
+               Ki = 0.0008,
+               io:fwrite("integral: loop, sum = ~w kelvin-seconds\n", [Sum]),
+               receive ErrK ->
+                 % in the python impl, this decision is based on whether we are within the band in which proportional control is not saturating the pwm controller. This abs test is different, but very broadly similar. The main point is to stop adjusting the integral when we are far from the correct point, to avoid integral windup.
+                 if abs(ErrK) < 1 -> 
+                   io:fwrite("integral: error is within interesting zone\n"),
+                   Now = os:system_time(second),
+                   Delta_seconds = Now - Prev_time,
+                   NewSum = Sum + ErrK * Delta_seconds,
+                   Pwm_frac = Ki * NewSum,
+                   io:fwrite("integral: delta seconds ~w sec\n", [Delta_seconds]),
+                   io:fwrite("integral: calculated new PWM fraction ~w%\n", [Pwm_frac * 100]),
+	           summer ! {integral, Pwm_frac},
+	           integloop(NewSum, Now);
+                 true -> io:fwrite("integral: error is outside of interesting zone. Not adjusting integral\n"),
+                   integloop(Sum, os:system_time(second))
+                 end
+               end.
 
 % summer should receive partial-PWMs from the other components:
 % proportional, integral and derivative, sum them to produce
