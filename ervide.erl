@@ -93,12 +93,16 @@ errorctrl() ->
 errorloop(Setpoint) ->
   io:fwrite("errorloop: with setpoint ~w degrees C\n", [Setpoint]),
   receive
-    T -> io:fwrite("errorloop: received temperature ~w\n", [T]),
+    {temperature, T} ->
+         io:fwrite("errorloop: received temperature ~w\n", [T]),
          E = Setpoint - T, % degrees C, how many more degrees we need to add in heat to get to the setpoint
 	 io:fwrite("errorloop: temperature error is ~w degrees C\n", [E]),
          proportional ! E,
          integral ! E,
-         errorloop(Setpoint)
+         errorloop(Setpoint);
+    {setpoint, S} ->
+         io:fwrite("errorloop: received new setpoint ~w\n", [S]),
+         errorloop(S)
   after 61434 -> errorloop(Setpoint) % wait a whole minute because this is not something that needs refreshing that often other than when a temperature arrives
   end.
 
@@ -260,7 +264,7 @@ tempmeasure() ->
   % derivative of the measured value, not of the error term
   % (so as to cope better with controller step changes)
 
-  errorterm ! T,
+  errorterm ! {temperature, T},
 
   timer:sleep(28014),
   tempmeasure().
