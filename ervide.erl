@@ -187,10 +187,11 @@ sumloop(Last) ->
 pwmmer() -> io:fwrite("pwmmer: starting\n"),
 	    pwmmer_loop(0).
 
+pwmclip(Fraction) -> max(0, min(1, Fraction)).
+
 pwmmer_loop(Fraction) ->
 	io:fwrite("pwmmer: loop calculating\n"),
 
-	PWM_pulse_resolution_ms = 6137,
 	PWM_period_seconds = 50,
 
 	Time = erlang:system_time(second),
@@ -202,22 +203,28 @@ pwmmer_loop(Fraction) ->
 	io:fwrite("pwmmer: Position in period: ~w s / ~w s \n", [Position_in_period, PWM_period_seconds]),
 	io:fwrite("pwmmer: Percent through period: ~w% \n", [Fraction_in_period * 100]),
 
-	if
+	Next_change_delay = if
 		Fraction > Fraction_in_period ->
                   io:fwrite("pwmmer: power ON\n"),
-                  gen_server:cast(heater, 1);
+                  gen_server:cast(heater, 1),
+                  Remaining_fraction = pwmclip(Fraction) - Fraction_in_period,
+                  io:fwrite("pwmmer: remaining fraction = ~w pwms\n", [Remaining_fraction]),
+                  max(1, Remaining_fraction * PWM_period_seconds);
                                           
 		true -> io:fwrite("pwmmer: power OFF\n"),
-                        gen_server:cast(heater, 0)
+                        gen_server:cast(heater, 0),
+                        max(1, PWM_period_seconds - Position_in_period)
 	end,
 
-        io:fwrite("pwmmer: loop waiting for message or pwm interval\n"),
+        io:fwrite("pwmmer: loop waiting for message or pwm refresh interval of ~w sec\n", [Next_change_delay]),
+
+        Next_change_delay_ms = round(Next_change_delay * 1000),
 
 	receive
-		New_time -> pwmmer_loop(New_time)
+		New_fraction -> pwmmer_loop(New_fraction)
 		% loop without waiting for the whole delay. This means we might switch immediately. Although there's perhaps some rate limiting to be done on how fast we switch the physical hardware. This might not be the place to do it? Looping without delay also means we'll absorb new messages fairly fast, rather than at a max rate of one per period.
 	        % timeout for PWM loop could be dynamically calculated as time to expected next transition (because if we don't get a message interrupting this, we'll only change at the next transition).
-	after PWM_pulse_resolution_ms -> pwmmer_loop(Fraction)
+	after Next_change_delay_ms -> pwmmer_loop(Fraction)
 	end.
 
 
