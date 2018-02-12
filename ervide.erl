@@ -96,8 +96,8 @@ errorloop(Setpoint) ->
     T -> io:fwrite("errorloop: received temperature ~w\n", [T]),
          E = Setpoint - T, % degrees C, how many more degrees we need to add in heat to get to the setpoint
 	 io:fwrite("errorloop: temperature error is ~w degrees C\n", [E]),
-         proportional ! T,
-         integral ! T,
+         proportional ! E,
+         integral ! E,
          errorloop(Setpoint)
   after 61434 -> errorloop(Setpoint) % wait a whole minute because this is not something that needs refreshing that often other than when a temperature arrives
   end.
