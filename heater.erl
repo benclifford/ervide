@@ -4,8 +4,8 @@
 
 % How often the heater state will be retransmitted to the
 % heater control socket in the absence of any explicit
-% changes.
--define(INTERVAL, 5634). % about 5 seconds
+% changes. Units of ms.
+-define(INTERVAL, 15322).
 
 
 start() ->
