@@ -37,6 +37,7 @@ init(Args) ->
   io:fwrite("ervide: init: in init...\n", []),
   SupFlags = #{strategy => one_for_one},
   ChildSpec = [
+      #{id => statsprocess, start => {statslogger, start, []} },
       #{id => heaterprocess, start => {heater, start, []} },
       #{id => pwmmerprocess, start => {ervide, startpwmmer, []} },
       #{id => summerprocess, start => {ervide, startsummer, []} },
@@ -88,7 +89,9 @@ starttemperature() ->
 
 errorctrl() ->
   io:fwrite("errorterm: loop start\n"),
-  errorloop(65.125).
+  Start_Setpoint = 62.0001,
+  gen_server:cast(statslogger, {setpoint, Start_Setpoint}),
+  errorloop(Start_Setpoint).
 
 errorloop(Setpoint) ->
   io:fwrite("errorloop: with setpoint ~w degrees C\n", [Setpoint]),
@@ -102,6 +105,7 @@ errorloop(Setpoint) ->
          errorloop(Setpoint);
     {setpoint, S} ->
          io:fwrite("errorloop: received new setpoint ~w\n", [S]),
+         gen_server:cast(statslogger, {setpoint, S}),
          errorloop(S)
   after 61434 -> errorloop(Setpoint) % wait a whole minute because this is not something that needs refreshing that often other than when a temperature arrives
   end.
@@ -189,6 +193,7 @@ sumloop(Last) ->
 % It will start at 0% = off, and await information from the summer.
 
 pwmmer() -> io:fwrite("pwmmer: starting\n"),
+            gen_server:cast(statslogger, {pwm_output, 0}),
 	    pwmmer_loop(0).
 
 pwmclip(Fraction) -> max(0, min(1, Fraction)).
@@ -225,7 +230,9 @@ pwmmer_loop(Fraction) ->
         Next_change_delay_ms = round(Next_change_delay * 1000),
 
 	receive
-		New_fraction -> pwmmer_loop(New_fraction)
+		New_fraction -> 
+                  gen_server:cast(statslogger, {pwm_output, New_fraction}),
+                  pwmmer_loop(New_fraction)
 		% loop without waiting for the whole delay. This means we might switch immediately. Although there's perhaps some rate limiting to be done on how fast we switch the physical hardware. This might not be the place to do it? Looping without delay also means we'll absorb new messages fairly fast, rather than at a max rate of one per period.
 	        % timeout for PWM loop could be dynamically calculated as time to expected next transition (because if we don't get a message interrupting this, we'll only change at the next transition).
 	after Next_change_delay_ms -> pwmmer_loop(Fraction)
@@ -265,6 +272,7 @@ tempmeasure() ->
   % (so as to cope better with controller step changes)
 
   errorterm ! {temperature, T},
+  gen_server:cast(statslogger, {temperature, T}),
 
   timer:sleep(28014),
   tempmeasure().
