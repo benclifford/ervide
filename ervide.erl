@@ -17,6 +17,10 @@ startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
 start(Type, Args) -> 
   startup_message(),
   supervisor:start_link(ervide, []).
+  % if this supervisor stops - in current use most often because the
+  % temperature measurement isn't reachable - then this needs to be
+  % some kind of loud obvious notification sent to the user
+  % so they can attempt to save their food.
 
 prep_stop(State) -> 
   io:fwrite("ervide: prep_stop: preparing to stop application\n"),
@@ -44,6 +48,12 @@ init(Args) ->
       #{id => proportionalprocess, start => {ervide, startproportional, []} },
       #{id => integralprocess, start => {ervide, startintegral, []} },
       #{id => errortermprocess, start => {ervide, starterrorterm, []} },
+
+      % there's a bug in the temperature process wrt supervisors at the
+      % moment: two quick restarts in a row are causing the supervisor
+      % to shut down (which is correct supervisor behaviour) but
+      % this should be more lenient: 3 minutes gap is probably ok for
+      % not being able to measure temperature, for example.
       #{id => temperatureprocess, start => {ervide, starttemperature, []} }
     ],
   {ok, {SupFlags, ChildSpec}}.
@@ -80,7 +90,7 @@ starterrorterm() ->
            {ok, Errorterm_process}.
 
 starttemperature() ->
-	   Temperature_process = spawn(ervide, tempmeasure, []),
+	   Temperature_process = spawn_link(ervide, tempmeasure, []),
 	   io:fwrite("start: Temperature_process = ~w (pid)\n", [Temperature_process]),
 	   register(temperature, Temperature_process),
            {ok, Temperature_process}.
@@ -117,12 +127,13 @@ errorloop(Setpoint) ->
 %   Setpoint - hard coded constant for now?
 %   Current Temperature - needs to be acquired from sensor
 propctrl() -> io:fwrite("proportional: loop start\n"),
-	      Kp = 1000000, % PWMs per degree Celcius
+	      Kp = 0.3, % PWMs per degree Celcius
 
               receive
                 T -> Fraction = Kp * T,
                      io:fwrite("proportional: calculated new PWM fraction ~w%\n", [Fraction * 100]),
 
+                     gen_server:cast(statslogger, {pwm_proportional, Fraction}),
 	             summer ! {proportional, Fraction}
               end, % no timeout persistent behaviour here - relying on summer to be able to store the relevant state
 	      propctrl().
@@ -135,11 +146,12 @@ integloop(Sum, Prev_time) ->
                % the integral sum is a sum of temperature over time
                % so the unit of Sum is (kelvin . sec)
                % so Ki is PWMs per (kelvin . sec)
-               Ki = 0,
+               Ki = 0.0002836,
+               Kp = 0.3, % copy from above - TODO: distribute better
                io:fwrite("integral: loop, sum = ~w kelvin-seconds\n", [Sum]),
                receive ErrK ->
                  % in the python impl, this decision is based on whether we are within the band in which proportional control is not saturating the pwm controller. This abs test is different, but very broadly similar. The main point is to stop adjusting the integral when we are far from the correct point, to avoid integral windup.
-                 if abs(ErrK) < 1 -> 
+                 if abs(ErrK) < (1/Kp) -> 
                    io:fwrite("integral: error is within interesting zone\n"),
                    Now = os:system_time(second),
                    Delta_seconds = Now - Prev_time,
@@ -147,6 +159,7 @@ integloop(Sum, Prev_time) ->
                    Pwm_frac = Ki * NewSum,
                    io:fwrite("integral: delta seconds ~w sec\n", [Delta_seconds]),
                    io:fwrite("integral: calculated new PWM fraction ~w%\n", [Pwm_frac * 100]),
+                   gen_server:cast(statslogger, {pwm_integral, Pwm_frac}),
 	           summer ! {integral, Pwm_frac},
 	           integloop(NewSum, Now);
                  true -> io:fwrite("integral: error is outside of interesting zone. Not adjusting integral\n"),
@@ -241,6 +254,8 @@ pwmmer_loop(Fraction) ->
 
 tempmeasure() ->
   io:fwrite("temperature: start of loop\n"),
+  process_flag(trap_exit, true), % really only needs to happen in init, but I think ok to keep doing?
+
   io:fwrite("temperature: attempting to connect\n"),
 
   {ok, Sock} = gen_tcp:connect("10.11.13.239", 23, [{active, false}, list], 2000),
