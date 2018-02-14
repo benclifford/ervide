@@ -117,7 +117,7 @@ errorloop(Setpoint) ->
 %   Setpoint - hard coded constant for now?
 %   Current Temperature - needs to be acquired from sensor
 propctrl() -> io:fwrite("proportional: loop start\n"),
-	      Kp = 0.725, % PWMs per degree Celcius
+	      Kp = 1000000, % PWMs per degree Celcius
 
               receive
                 T -> Fraction = Kp * T,
@@ -135,7 +135,7 @@ integloop(Sum, Prev_time) ->
                % the integral sum is a sum of temperature over time
                % so the unit of Sum is (kelvin . sec)
                % so Ki is PWMs per (kelvin . sec)
-               Ki = 0.0008,
+               Ki = 0,
                io:fwrite("integral: loop, sum = ~w kelvin-seconds\n", [Sum]),
                receive ErrK ->
                  % in the python impl, this decision is based on whether we are within the band in which proportional control is not saturating the pwm controller. This abs test is different, but very broadly similar. The main point is to stop adjusting the integral when we are far from the correct point, to avoid integral windup.
