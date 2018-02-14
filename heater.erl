@@ -80,6 +80,6 @@ drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]) ->
 
 terminate(Reason, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit]) ->
   io:fwrite("heater: terminating, reason ~w\n", [Reason]),
-  drive_radio(LastBit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
+  drive_radio(0, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
   io:fwrite("heater: termination complete\n", []).
 
