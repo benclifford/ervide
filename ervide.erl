@@ -86,7 +86,7 @@ startintegral() ->
            {ok, Integral_process}.
 
 startdifferential() ->
-	   Differential_process = spawn(ervide, diffctrl, []),
+	   Differential_process = spawn_link(ervide, diffctrl, []),
 	   io:fwrite("start: Differential_process = ~w (pid)\n", [Differential_process]),
 	   register(differential, Differential_process),
            {ok, Differential_process}.
@@ -135,7 +135,7 @@ errorloop(Setpoint) ->
 %   Setpoint - hard coded constant for now?
 %   Current Temperature - needs to be acquired from sensor
 propctrl() -> io:fwrite("proportional: loop start\n"),
-	      Kp = 0.3, % PWMs per degree Celcius
+	      Kp = 0.4, % PWMs per degree Celcius
 
               receive
                 T -> Fraction = Kp * T,
@@ -154,8 +154,8 @@ integloop(Sum, Prev_time) ->
                % the integral sum is a sum of temperature over time
                % so the unit of Sum is (kelvin . sec)
                % so Ki is PWMs per (kelvin . sec)
-               Ki = 0.0002836,
-               Kp = 0.3, % copy from above - TODO: distribute better
+               Ki = 0.000630418,
+               Kp = 0.4, % copy from above - TODO: distribute better
                io:fwrite("integral: loop, sum = ~w kelvin-seconds\n", [Sum]),
                receive ErrK ->
                  % in the python impl, this decision is based on whether we are within the band in which proportional control is not saturating the pwm controller. This abs test is different, but very broadly similar. The main point is to stop adjusting the integral when we are far from the correct point, to avoid integral windup.
@@ -181,13 +181,42 @@ diffctrl() ->
 
 diffloop(State) ->
   io:fwrite("differential: loop\n"),
-  receive {temperature, T} ->
-    io:fwrite("differential: received temperature ~w\n", [T]),
-    Pwm_frac = 0,
+  process_flag(trap_exit, true), % really only needs to happen in init, but I think ok to keep doing?
+  io:fwrite("differential: history is ~w\n", [State]),
+
+  Now = os:system_time(second),
+
+  Pred = fun({ElTime, _}) -> ElTime > Now - 150 end,  % last 2.5 minutes
+  Recent_State = lists:filter(Pred, State),
+  io:fwrite("differential: recent history is ~w\n", [Recent_State]),
+
+  case Recent_State of
+
+  [] -> nop;
+
+  [_] -> nop;
+
+  [{OldTime, OldT} | _] ->
+    {NewestTime, NewestTemp} = lists:last(Recent_State),
+    DeltaTime = NewestTime - OldTime,
+    DeltaTemp = NewestTemp - OldT, 
+
+    Differential = DeltaTemp / DeltaTime, % kelvin per second
+
+    Kd = 63.45,
+
+    io:fwrite("differential: change is ~w kelvin in ~w seconds\n", [DeltaTemp, DeltaTime]),
+    io:fwrite("differential: slope is ~w kelvin per second\n", [Differential]),
+    Pwm_frac = -1 * Kd * Differential,
     gen_server:cast(statslogger, {pwm_differential, Pwm_frac}),
     summer ! {differential, Pwm_frac}
   end,
-  diffloop(State).
+
+  receive {temperature, T} ->
+    io:fwrite("differential: received temperature ~w\n", [T]),
+    diffloop(Recent_State ++ [{Now, T}])
+  end.
+
 
 % summer should receive partial-PWMs from the other components:
 % proportional, integral and derivative, sum them to produce
