@@ -2,11 +2,12 @@
 
 -behaviour(application).
 -behaviour(supervisor).
--export([pwmmer/0, propctrl/0, integctrl/0, sumctrl/0,
+-export([pwmmer/0, propctrl/0, integctrl/0, diffctrl/0, sumctrl/0,
 	 tempmeasure/0, errorctrl/0, init/1,
          start/2, stop/1, prep_stop/1,
          startpwmmer/0, startsummer/0, startproportional/0,
-         startintegral/0, starterrorterm/0, starttemperature/0
+         startintegral/0, starterrorterm/0, starttemperature/0,
+         startdifferential/0
 	]).
 
 startup_message() -> io:fwrite("ervide - an Erlang sous vide controller\n").
@@ -47,6 +48,7 @@ init(Args) ->
       #{id => summerprocess, start => {ervide, startsummer, []} },
       #{id => proportionalprocess, start => {ervide, startproportional, []} },
       #{id => integralprocess, start => {ervide, startintegral, []} },
+      #{id => differentialprocess, start => {ervide, startdifferential, []} },
       #{id => errortermprocess, start => {ervide, starterrorterm, []} },
 
       % there's a bug in the temperature process wrt supervisors at the
@@ -82,6 +84,12 @@ startintegral() ->
 	   io:fwrite("start: Integral_process = ~w (pid)\n", [Integral_process]),
 	   register(integral, Integral_process),
            {ok, Integral_process}.
+
+startdifferential() ->
+	   Differential_process = spawn(ervide, diffctrl, []),
+	   io:fwrite("start: Differential_process = ~w (pid)\n", [Differential_process]),
+	   register(differential, Differential_process),
+           {ok, Differential_process}.
 
 starterrorterm() ->
 	   Errorterm_process = spawn(ervide, errorctrl, []),
@@ -166,6 +174,20 @@ integloop(Sum, Prev_time) ->
                    integloop(Sum, os:system_time(second))
                  end
                end.
+
+diffctrl() ->
+  io:fwrite("differential: starting\n"),
+  diffloop([]).
+
+diffloop(State) ->
+  io:fwrite("differential: loop\n"),
+  receive {temperature, T} ->
+    io:fwrite("differential: received temperature ~w\n", [T]),
+    Pwm_frac = 0,
+    gen_server:cast(statslogger, {pwm_differential, Pwm_frac}),
+    summer ! {differential, Pwm_frac}
+  end,
+  diffloop(State).
 
 % summer should receive partial-PWMs from the other components:
 % proportional, integral and derivative, sum them to produce
@@ -287,6 +309,7 @@ tempmeasure() ->
   % (so as to cope better with controller step changes)
 
   errorterm ! {temperature, T},
+  differential ! {temperature, T},
   gen_server:cast(statslogger, {temperature, T}),
 
   timer:sleep(28014),
