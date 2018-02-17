@@ -40,7 +40,10 @@ stop(State) ->
 
 init(Args) ->
   io:fwrite("ervide: init: in init...\n", []),
-  SupFlags = #{strategy => one_for_one},
+  SupFlags = #{strategy => one_for_one,
+               intensity => 60, % restart up to 60 times
+               period => 60 % in one minute
+              },
   ChildSpec = [
       #{id => statsprocess, start => {statslogger, start, []} },
       #{id => heaterprocess, start => {heater, start, []} },
@@ -318,7 +321,9 @@ pwmmer_loop(Fraction) ->
 
 
 tempmeasure() ->
-  io:fwrite("temperature: start of loop\n"),
+  io:fwrite("temperature: start of loop: initial delay\n"),
+  timer:sleep(5000),  % some of the periodic delay is at the start not the end so that if there are process restarts, we will hold off a bit.
+  io:fwrite("temperature: start of loop: end of initial delay\n"),
   process_flag(trap_exit, true), % really only needs to happen in init, but I think ok to keep doing?
 
   io:fwrite("temperature: attempting to connect\n"),
@@ -355,5 +360,5 @@ tempmeasure() ->
   differential ! {temperature, T},
   gen_server:cast(statslogger, {temperature, T}),
 
-  timer:sleep(10000),
+  timer:sleep(5000),
   tempmeasure().
