@@ -48,21 +48,27 @@ init([]) ->
   io:fwrite("heater: init: registering heater name\n"),
   register(heater, self()),
   io:fwrite("heater: init finished\n"),
-  {ok, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, 0], ?INTERVAL}.
+  {ok, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, 0, 0], ?INTERVAL}.
 
-handle_cast(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit]) ->
-  io:fwrite("heater: control power ~w on/off (was ~w)\n", [Bit, LastBit]),
-  drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
+handle_cast(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
+  io:fwrite("heater: control power ~w on/off (was ~w at ~w)\n", [Bit, LastBit, LastTime]),
+  set_bit(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]).
 
-  io:fwrite("heater: setting heater bit finished.\n"),
-  {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, Bit], ?INTERVAL}.
-
-handle_info(timeout, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit]) ->
+handle_info(timeout, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
   io:fwrite("heater: handle_info: refreshing remote power unit with current state\n"),
-  drive_radio(LastBit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
-  io:fwrite("heater: transmitter off\n", []),
+  set_bit(LastBit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]).
 
-  {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit], ?INTERVAL}.
+set_bit(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
+  io:fwrite("heater: set_bit: setting ~w\n", [Bit]),
+  Now = os:system_time(second),
+  if
+    (Now - LastTime < 5) and (LastBit == Bit) ->
+      io:fwrite("heater: set_bit: suppressing radio as recently set\n"),
+      {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime], ?INTERVAL};
+    true ->
+      drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
+      {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, Bit, os:system_time(second)], ?INTERVAL}
+  end.
 
 drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]) ->
   io:fwrite("heater: drive_radio: setting to ~w\n", [Bit]),
@@ -78,7 +84,7 @@ drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]) ->
   io:fwrite("heater: drive_radio: transmitter off\n", []).
 
 
-terminate(Reason, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit]) ->
+terminate(Reason, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
   io:fwrite("heater: terminating, reason ~w\n", [Reason]),
   drive_radio(0, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
   io:fwrite("heater: termination complete\n", []).
