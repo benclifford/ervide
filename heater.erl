@@ -70,7 +70,7 @@ drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]) ->
   gpio:write(Pin15, 1),
   gpio:write(Pin16, 1),
   gpio:write(Pin13, Bit),
-  timer:sleep(250),
+  timer:sleep(100),
   gpio:write(Pin22, 1),
   io:fwrite("heater: drive_radio: transmitter on\n", []),
   timer:sleep(250),
