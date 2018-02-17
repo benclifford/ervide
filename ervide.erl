@@ -107,7 +107,7 @@ starttemperature() ->
 
 errorctrl() ->
   io:fwrite("errorterm: loop start\n"),
-  Start_Setpoint = 62.0001,
+  Start_Setpoint = 73,
   gen_server:cast(statslogger, {setpoint, Start_Setpoint}),
   errorloop(Start_Setpoint).
 
@@ -186,9 +186,9 @@ diffloop(State) ->
 
   Now = os:system_time(second),
 
-  Pred = fun({ElTime, _}) -> ElTime > Now - 150 end,  % last 2.5 minutes
+  Pred = fun({ElTime, _}) -> ElTime > Now - 60 end,  % last minutes
   Recent_State = lists:filter(Pred, State),
-  io:fwrite("differential: recent history is ~w\n", [Recent_State]),
+  io:fwrite("differential: recent temperature history is ~w\n", [Recent_State]),
 
   case Recent_State of
 
@@ -196,16 +196,23 @@ diffloop(State) ->
 
   [_] -> nop;
 
-  [{OldTime, OldT} | _] ->
-    {NewestTime, NewestTemp} = lists:last(Recent_State),
-    DeltaTime = NewestTime - OldTime,
-    DeltaTemp = NewestTemp - OldT, 
+  [{NewestTime, NewestTemp} | Rest] ->
+    F = fun({Time, Temp}) -> 
+      DeltaTime = NewestTime - Time,
+      DeltaTemp = NewestTemp - Temp, 
+      
+      DeltaTemp / DeltaTime
+    end,
 
-    Differential = DeltaTemp / DeltaTime, % kelvin per second
+    Differential_components = lists:map(F, Rest),
+
+    io:fwrite("differential: components are ~w\n", [Differential_components]),
+    Sum = lists:sum(Differential_components),
+
+    Differential = Sum / length(Rest), % kelvin per second
 
     Kd = 63.45,
 
-    io:fwrite("differential: change is ~w kelvin in ~w seconds\n", [DeltaTemp, DeltaTime]),
     io:fwrite("differential: slope is ~w kelvin per second\n", [Differential]),
     Pwm_frac = -1 * Kd * Differential,
     gen_server:cast(statslogger, {pwm_differential, Pwm_frac}),
@@ -214,7 +221,7 @@ diffloop(State) ->
 
   receive {temperature, T} ->
     io:fwrite("differential: received temperature ~w\n", [T]),
-    diffloop(Recent_State ++ [{Now, T}])
+    diffloop([{Now, T}] ++ Recent_State)
   end.
 
 
@@ -267,26 +274,33 @@ pwmmer_loop(Fraction) ->
 
 	PWM_period_seconds = 50,
 
-	Time = erlang:system_time(second),
-	Position_in_period = Time rem PWM_period_seconds,
-	Fraction_in_period = Position_in_period / PWM_period_seconds,
+	BigTime = erlang:system_time(millisecond),
+        io:fwrite("pwmmer: system_time is ~w ms\n", [BigTime]),
+        Time = BigTime/1000,
+
+	Position_in_period = Time - (trunc(Time / PWM_period_seconds) * PWM_period_seconds),
+	Fraction_in_period = Position_in_period / PWM_period_seconds, % 0 - 1
+
+        Intersection_fraction = Fraction_in_period,
 
 	io:fwrite("pwmmer: Percentage: ~w%\n", [Fraction * 100]),
 	io:fwrite("pwmmer: System time: ~w s\n", [Time]),
 	io:fwrite("pwmmer: Position in period: ~w s / ~w s \n", [Position_in_period, PWM_period_seconds]),
-	io:fwrite("pwmmer: Percent through period: ~w% \n", [Fraction_in_period * 100]),
+	io:fwrite("pwmmer: Intersection Fraction: ~w% \n", [Intersection_fraction * 100]),
 
-	Next_change_delay = if
-		Fraction > Fraction_in_period ->
+        Next_change_delay = if
+		Fraction > Intersection_fraction ->
                   io:fwrite("pwmmer: power ON\n"),
                   gen_server:cast(heater, 1),
+
                   Remaining_fraction = pwmclip(Fraction) - Fraction_in_period,
                   io:fwrite("pwmmer: remaining fraction = ~w pwms\n", [Remaining_fraction]),
-                  max(1, Remaining_fraction * PWM_period_seconds);
+                  max(0.5, Remaining_fraction * PWM_period_seconds);
                                           
 		true -> io:fwrite("pwmmer: power OFF\n"),
                         gen_server:cast(heater, 0),
-                        max(1, PWM_period_seconds - Position_in_period)
+
+                        max(0.5, PWM_period_seconds - Position_in_period)
 	end,
 
         io:fwrite("pwmmer: loop waiting for message or pwm refresh interval of ~w sec\n", [Next_change_delay]),
@@ -341,5 +355,5 @@ tempmeasure() ->
   differential ! {temperature, T},
   gen_server:cast(statslogger, {temperature, T}),
 
-  timer:sleep(28014),
+  timer:sleep(10000),
   tempmeasure().
