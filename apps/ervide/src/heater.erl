@@ -51,7 +51,7 @@ init([]) ->
   {ok, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, 0, 0], ?INTERVAL}.
 
 handle_cast(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
-  io:fwrite("heater: control power ~w on/off (was ~w at ~w)\n", [Bit, LastBit, LastTime]),
+  io:fwrite("heater: received command to turn power ~w on/off (was ~w at ~w)\n", [Bit, LastBit, LastTime]),
   set_bit(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]).
 
 handle_info(timeout, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
@@ -59,13 +59,13 @@ handle_info(timeout, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTim
   set_bit(LastBit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]).
 
 set_bit(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
-  io:fwrite("heater: set_bit: setting ~w\n", [Bit]),
   Now = os:system_time(second),
   if
     (Now - LastTime < 5) and (LastBit == Bit) ->
-      io:fwrite("heater: set_bit: suppressing radio as recently set\n"),
+      io:fwrite("heater: set_bit: suppressing radio as recently set to ~w\n", [Bit]),
       {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime], ?INTERVAL};
     true ->
+      io:fwrite("heater: set_bit: setting ~w\n", [Bit]),
       drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]),
       {noreply, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, Bit, os:system_time(second)], ?INTERVAL}
   end.
@@ -78,10 +78,9 @@ drive_radio(Bit, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22]) ->
   gpio:write(Pin13, Bit),
   timer:sleep(100),
   gpio:write(Pin22, 1),
-  io:fwrite("heater: drive_radio: transmitter on\n", []),
   timer:sleep(250),
   gpio:write(Pin22, 0),
-  io:fwrite("heater: drive_radio: transmitter off\n", []).
+  io:fwrite("heater: drive_radio: transmitted\n", []).
 
 
 terminate(Reason, [Pin11, Pin13, Pin15, Pin16, Pin18, Pin22, LastBit, LastTime]) ->
