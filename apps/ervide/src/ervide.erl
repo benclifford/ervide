@@ -180,11 +180,11 @@ integloop(Sum, Prev_time) ->
 
 diffctrl() ->
   io:fwrite("differential: starting\n"),
+  process_flag(trap_exit, true),
   diffloop([]).
 
 diffloop(State) ->
   io:fwrite("differential: loop\n"),
-  process_flag(trap_exit, true), % really only needs to happen in init, but I think ok to keep doing?
   io:fwrite("differential: history is ~w\n", [State]),
 
   Now = os:system_time(second),
