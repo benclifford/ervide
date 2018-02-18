@@ -273,12 +273,9 @@ pwmmer() -> io:fwrite("pwmmer: starting\n"),
 pwmclip(Fraction) -> max(0, min(1, Fraction)).
 
 pwmmer_loop(Fraction) ->
-	io:fwrite("pwmmer: loop calculating\n"),
-
 	PWM_period_seconds = 50,
 
 	BigTime = erlang:system_time(millisecond),
-        io:fwrite("pwmmer: system_time is ~w ms\n", [BigTime]),
         Time = BigTime/1000,
 
 	Position_in_period = Time - (trunc(Time / PWM_period_seconds) * PWM_period_seconds),
@@ -286,27 +283,23 @@ pwmmer_loop(Fraction) ->
 
         Intersection_fraction = Fraction_in_period,
 
-	io:fwrite("pwmmer: Percentage: ~w%\n", [Fraction * 100]),
-	io:fwrite("pwmmer: System time: ~w s\n", [Time]),
-	io:fwrite("pwmmer: Position in period: ~w s / ~w s \n", [Position_in_period, PWM_period_seconds]),
-	io:fwrite("pwmmer: Intersection Fraction: ~w% \n", [Intersection_fraction * 100]),
+	io:fwrite("pwmmer: Output percentage: ~w%, Position in period: ~w s / ~w s\n", [Fraction * 100, Position_in_period, PWM_period_seconds]),
 
         Next_change_delay = if
 		Fraction > Intersection_fraction ->
-                  io:fwrite("pwmmer: power ON\n"),
+                  io:fwrite("pwmmer: turning power on\n"),
                   gen_server:cast(heater, 1),
 
                   Remaining_fraction = pwmclip(Fraction) - Fraction_in_period,
-                  io:fwrite("pwmmer: remaining fraction = ~w pwms\n", [Remaining_fraction]),
                   max(0.5, Remaining_fraction * PWM_period_seconds);
                                           
-		true -> io:fwrite("pwmmer: power OFF\n"),
+		true -> io:fwrite("pwmmer: turning power OFF\n"),
                         gen_server:cast(heater, 0),
 
                         max(0.5, PWM_period_seconds - Position_in_period)
 	end,
 
-        io:fwrite("pwmmer: loop waiting for message or pwm refresh interval of ~w sec\n", [Next_change_delay]),
+        io:fwrite("pwmmer: waiting for message or remaining refresh interval ~w sec\n", [Next_change_delay]),
 
         Next_change_delay_ms = round(Next_change_delay * 1000),
 
