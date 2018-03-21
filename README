@@ -1,22 +1,17 @@
 
-Deps:
+Build (including downloading dependencies):
 
-git clone https://github.com/paoloo/gpio
-
-erlc gpio/src/gpio.erl 
-# leaves the BEAM file in the top level directory where we want it
-
-Compile:
-
-$ erlc ervide.erl 
+$ rebar3 release
 
 Run:
 
-$ erl -eval 'application:start(ervide).'
+$ rebar3 shell
+
+This will start the application, and leave the console at an erlang
+shell to allow interaction with the code.
 
 Stop:
 
-init:stop().
+1> init:stop().
 
-in the shell
 
