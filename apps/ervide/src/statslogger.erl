@@ -8,7 +8,7 @@ start() ->
   {ok, Stats_process}.
 
 init(Args) ->
-  io:fwrite("statslogger: initialising"),
+  io:fwrite("statslogger: initialising\n"),
 
   process_flag(trap_exit, true),
 
@@ -16,7 +16,7 @@ init(Args) ->
   io:fwrite(Log_IOD, "update_reason,time,temperature,setpoint,pwm_output,pwm_proportional,pwm_integral,pwm_differential\n", []),
 
   register(statslogger, self()),
-  io:fwrite("statslogger: initialised"),
+  io:fwrite("statslogger: initialised\n"),
   {ok, [Log_IOD, 0, 0, 0, 0, 0, 0]}.
 
 handle_cast({temperature, T}, [Log_IOD, Old_Temp, Old_Setpoint, Old_Output_PWM, PWM_Prop, PWM_Integ, PWM_Diff]) ->
