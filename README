@@ -10,6 +10,10 @@ $ rebar3 shell
 This will start the application, and leave the console at an erlang
 shell to allow interaction with the code.
 
+Set target temperature:
+
+1> errorterm ! {setpoint, 65.6}.
+
 Stop:
 
 1> init:stop().
